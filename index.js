@@ -20,8 +20,33 @@ const pool = new Pool({
 });
 
 // Middleware
-app.use(cors());
+app.use(cors({
+  origin: '*',
+  methods: ['GET', 'POST', 'PUT', 'DELETE', 'OPTIONS'],
+  allowedHeaders: ['Content-Type', 'Authorization']
+}));
+
 app.use(bodyParser.json());
+
+// Rota raiz para evitar "Cannot GET /"
+app.get('/', (req, res) => {
+  res.json({
+    message: "API de Currículos Online",
+    status: "Operacional",
+    endpoints: {
+      pessoas: {
+        listar: "GET /pessoas",
+        criar: "POST /pessoas"
+      },
+      experiencias: "GET /pessoas/:id/experiencias",
+      formacao: "GET /pessoas/:id/formacao",
+      habilidades: "GET /pessoas/:id/habilidades",
+      projetos: "GET /pessoas/:id/projetos",
+      contatos: "GET /pessoas/:id/contatos",
+      initDatabase: "POST /init-database"
+    }
+  });
+});
 
 // Endpoints para Pessoas
 app.get('/pessoas', async (req, res) => {
@@ -36,6 +61,11 @@ app.get('/pessoas', async (req, res) => {
 
 app.post('/pessoas', async (req, res) => {
   const { nome, titulo, resumo, foto_url } = req.body;
+  
+  if (!nome || !titulo) {
+    return res.status(400).json({ error: 'Nome e título são obrigatórios' });
+  }
+
   try {
     const result = await pool.query(
       'INSERT INTO pessoas (nome, titulo, resumo, foto_url) VALUES ($1, $2, $3, $4) RETURNING *',
@@ -63,6 +93,11 @@ app.get('/pessoas/:id/experiencias', async (req, res) => {
 app.post('/pessoas/:id/experiencias', async (req, res) => {
   const { id } = req.params;
   const { cargo, empresa, periodo, descricao } = req.body;
+
+  if (!cargo || !empresa) {
+    return res.status(400).json({ error: 'Cargo e empresa são obrigatórios' });
+  }
+
   try {
     const result = await pool.query(
       'INSERT INTO experiencias (pessoa_id, cargo, empresa, periodo, descricao) VALUES ($1, $2, $3, $4, $5) RETURNING *',
@@ -183,13 +218,11 @@ app.post('/pessoas/:id/contatos', async (req, res) => {
   }
 });
 
-// Endpoint para inicialização do banco (executa todo o SQL)
+// Endpoint para inicialização do banco (opcional - use com cuidado em produção)
 app.post('/init-database', async (req, res) => {
   try {
-    // Aqui você pode incluir todo o seu script SQL como uma string
-    // Ou ler de um arquivo como no exemplo anterior
     const sqlScript = `
-      -- Seu script SQL completo aqui
+      -- Seu script SQL de inicialização aqui
       -- (o mesmo que você tinha no arquivo setup.sql)
     `;
     
@@ -204,11 +237,24 @@ app.post('/init-database', async (req, res) => {
     res.json({ message: 'Banco de dados inicializado com sucesso' });
   } catch (err) {
     console.error(err);
-    res.status(500).json({ error: 'Erro ao inicializar banco de dados' });
+    res.status(500).json({ 
+      error: 'Erro ao inicializar banco de dados',
+      details: err.message 
+    });
   }
 });
 
-// Iniciar servidor
-app.listen(port, () => {
-  console.log(`Servidor rodando na porta ${port}`);
+// Middleware para rotas não encontradas
+app.use((req, res) => {
+  res.status(404).json({ error: 'Endpoint não encontrado' });
 });
+
+// Iniciar servidor (local)
+if (process.env.NODE_ENV !== 'production') {
+  app.listen(port, () => {
+    console.log(`Servidor rodando na porta ${port}`);
+  });
+}
+
+// Exportação para o Vercel
+module.exports = app;
